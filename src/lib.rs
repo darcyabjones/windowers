@@ -89,7 +89,6 @@ impl<'a, T> Iterator for Windows<'a, T>
         } else {
             self.elements = &[];
         }
-        println!("{:?}", ret);
         Some(ret)
     }
 
@@ -100,14 +99,21 @@ impl<'a, T> Iterator for Windows<'a, T>
     }
 
     #[inline]
+    fn count(self) -> usize {
+        self.len()
+    }
+
+    #[inline]
     fn nth(&mut self, n: usize) -> Option<Self::Item> {
-        let (end, overflow) = self.size.overflowing_add(n);
-        if end > self.elements.len() || overflow {
+        let pos = n * self.step;
+        let last = (self.len() - 1) * self.step;
+
+        if pos > last {
             self.elements = &[];
             None
         } else {
-            let nth = &self.elements[n..end];
-            self.elements = &self.elements[(n + 1)..];
+            let nth = &self.elements[pos..(pos + self.size)];
+            self.elements = &self.elements[(pos + self.step)..];
             Some(nth)
         }
     }
@@ -124,16 +130,12 @@ impl<'a, T> Iterator for Windows<'a, T>
 }
 
 
-//pub trait Windower : for<'a> From<&'a T> {
-//    fn into_windows(&self, size: usize, step: usize) -> Windows<&'a T>;
-//}
-//
-//
-//impl<'a, T> Windower for &'a, [T] {
-//    fn into_windows(&self, size: usize, step: usize) -> Windows<&'a, [T]> {
-//        Windows::new(self, size, step)
-//    }
-//}
+pub trait Windower {
+    type Item;
+
+    fn into_windows(&self, size: usize, step: usize) -> Windows<&Self::Item>;
+}
+
 
 
 
@@ -229,5 +231,23 @@ mod test {
         let elems = &[1, 2, 3, 4, 5, 6];
         let win = Windows::new(elems, 3, 2);
         assert_eq!(win.last().unwrap(), &[5, 6]);
+    }
+
+    #[test]
+    fn gets_nth() {
+        let elems = &[1, 2, 3, 4, 5, 6, 7];
+        let mut win = Windows::new(elems, 3, 1);
+        assert_eq!(win.nth(1).unwrap(), &[2, 3, 4]);
+        assert_eq!(win.next().unwrap(), &[3, 4, 5]);
+
+        let mut win = Windows::new(elems, 3, 1);
+        assert_eq!(win.nth(3).unwrap(), &[4, 5, 6]);
+        assert_eq!(win.next().unwrap(), &[5, 6, 7]);
+
+        println!("last");
+        let mut win = Windows::new(elems, 3, 2);
+        assert_eq!(win.nth(1).unwrap(), &[3, 4, 5]);
+        assert_eq!(win.next().unwrap(), &[5, 6, 7]);
+        assert!(win.next().is_none());
     }
 }
