@@ -21,7 +21,7 @@ impl<'a, T> Windows<'a, T> {
     /// # Examples
     ///
     /// ```rust
-    /// use windowers::Windows;
+    /// use windowrs::Windows;
     ///
     /// let mut win = Windows::new(&[1, 2, 3, 4], 2, 1);
     /// assert_eq!(win.next().unwrap(), &[1, 2]);
@@ -42,7 +42,7 @@ impl<'a, T> Windows<'a, T> {
     /// # Examples
     ///
     /// ```rust
-    /// use windowers::Windows;
+    /// use windowrs::Windows;
     ///
     /// let win = Windows::new(&[1, 2, 3, 4], 2, 1);
     /// assert_eq!(win.len(), 3);
