@@ -25,9 +25,9 @@ impl<'a, T> Windows<'a, T> {
     /// use windowrs::{Windows,Window};
     ///
     /// let mut win = Windows::new(&[1, 2, 3, 4], 2, 1);
-    /// assert_eq!(win.next().unwrap(), Window::new(0, 2, &[1, 2]));
-    /// assert_eq!(win.next().unwrap(), Window::new(1, 3, &[2, 3]));
-    /// assert_eq!(win.next().unwrap(), Window::new(2, 4, &[3, 4]));
+    /// assert_eq!(win.next().unwrap(), Window::new(0, 2, &[1, 2][..]));
+    /// assert_eq!(win.next().unwrap(), Window::new(1, 3, &[2, 3][..]));
+    /// assert_eq!(win.next().unwrap(), Window::new(2, 4, &[3, 4][..]));
     /// assert!(win.next().is_none());
     /// ```
     pub fn new(elements: &'a [T], size: usize, step: usize) -> Self {
@@ -85,7 +85,7 @@ impl<'a, T> Windows<'a, T> {
 
 impl<'a, T> Iterator for Windows<'a, T>
         where T: fmt::Debug {
-    type Item = Window<'a, T>;
+    type Item = Window<&'a [T]>;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
@@ -112,7 +112,6 @@ impl<'a, T> Iterator for Windows<'a, T>
         } else {
             self.elements = &[];
         }
-
 
         Some(ret)
     }
@@ -169,53 +168,76 @@ impl<'a, T> Iterator for Windows<'a, T>
 
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub struct Window<'a, T: 'a> {
+pub struct Window<V> {
     pub start: usize,
     pub end: usize,
-    pub elements: &'a [T],
+    pub value: V,
 }
 
 
-impl<'a, T> Window<'a, T> {
+impl<V> Window<V> {
 
     /// Create a new window object.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use windowrs::{Windows,Window};
-    ///
-    /// let mut win = Windows::new(&[1, 2, 3, 4], 2, 1);
-    /// assert_eq!(win.next().unwrap(), Window::new(0, 2, &[1, 2]));
-    /// assert_eq!(win.next().unwrap(), Window::new(1, 3, &[2, 3]));
-    /// assert_eq!(win.next().unwrap(), Window::new(2, 4, &[3, 4]));
-    /// assert!(win.next().is_none());
-    /// ```
-    pub fn new(start: usize, end: usize, elements: &'a [T]) -> Self {
+    pub fn new(start: usize, end: usize, value: V) -> Self {
         assert!(start <= end);
-        Window { start, end, elements }
+        Window { start, end, value }
     }
 
+    /// Converts from [`Window<V>`] to [`Window<&V>`].
+    ///
+    /// [`Window<V>`]: struct.Window.html
+    /// [`Window<&V>`]: struct.Window.html
+    pub fn as_ref(&self) -> Window<&V> {
+        Window::new(self.start, self.end, &self.value)
+    }
 
-    /// The length of the iterator.
+    /// Converts from [`Window<V>`] to [`Window<&mut V>`].
     ///
-    /// # Examples
+    /// [`Window<V>`]: struct.Window.html
+    /// [`Window<&mut V>`]: struct.Window.html
     ///
-    /// ```rust
-    /// use windowrs::Windows;
+    /// # Examples:
     ///
-    /// let win = Windows::new(&[1, 2, 3, 4], 2, 1);
-    /// assert_eq!(win.len(), 3);
-    ///
-    /// let win = Windows::new(&[1, 2, 3, 4, 5], 3, 2);
-    /// assert_eq!(win.len(), 2);
     /// ```
-    pub fn len(&self) -> usize {
-        self.elements.len()
+    /// use windowrs::Window;
+    /// let mut win = Window::new(1, 10, 4.0);
+    /// {
+    ///     let win2 = win.as_mut();
+    ///     *win2.value = 3.0;
+    /// } // Mutable ref goes out of scope here
+    /// assert_eq!(Window::new(1, 10, 3.0), win);
+    /// ```
+    pub fn as_mut(&mut self) -> Window<&mut V> {
+        Window::new(self.start, self.end, &mut (*self).value)
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
+    /// Applies a function to the value in a window, leaving start and end
+    /// unchanged.
+    ///
+    /// Examples:
+    ///
+    /// ```
+    /// use windowrs::Window;
+    /// let win = Window::new(1, 10, 3.0);
+    /// let result = win.map(|x| x > 2.0);
+    /// assert_eq!(result, Window::new(1, 10, true));
+    /// ```
+    pub fn map<U, F: FnOnce(V) -> U>(self, f: F) -> Window<U> {
+        Window::new(self.start, self.end, f(self.value))
+    }
+
+    /// Applies a fuction taking the value and returning a new Window object.
+    ///
+    /// Examples:
+    ///
+    /// ```
+    /// use windowrs::Window;
+    /// let win = Window::new(1, 10, 3.0);
+    /// let result = win.flat_map(|x| Window::new(0, 0, x));
+    /// assert_eq!(Window::new(0, 0, 3.0), result);
+    /// ```
+    pub fn flat_map<U, F: FnOnce(V) -> Window<U>>(self, f: F) -> Window<U> {
+        f(self.value)
     }
 }
 
@@ -236,18 +258,18 @@ mod test {
     fn can_use_next() {
         let elems = &[1, 2, 3, 4];
         let mut win = Windows::new(elems, 2, 1);
-        assert_eq!(win.next().unwrap(), Window::new(0, 2, &[1, 2]));
-        assert_eq!(win.next().unwrap(), Window::new(1, 3, &[2, 3]));
-        assert_eq!(win.next().unwrap(), Window::new(2, 4, &[3, 4]));
+        assert_eq!(win.next().unwrap(), Window::new(0, 2, &[1, 2][..]));
+        assert_eq!(win.next().unwrap(), Window::new(1, 3, &[2, 3][..]));
+        assert_eq!(win.next().unwrap(), Window::new(2, 4, &[3, 4][..]));
         assert!(win.next().is_none());
 
         let elems = &[1, 2, 3, 4, 5, 6, 7];
         let mut win = Windows::new(elems, 3, 1);
-        assert_eq!(win.next().unwrap(), Window::new(0, 3, &[1, 2, 3]));
-        assert_eq!(win.next().unwrap(), Window::new(1, 4, &[2, 3, 4]));
-        assert_eq!(win.next().unwrap(), Window::new(2, 5, &[3, 4, 5]));
-        assert_eq!(win.next().unwrap(), Window::new(3, 6, &[4, 5, 6]));
-        assert_eq!(win.next().unwrap(), Window::new(4, 7, &[5, 6, 7]));
+        assert_eq!(win.next().unwrap(), Window::new(0, 3, &[1, 2, 3][..]));
+        assert_eq!(win.next().unwrap(), Window::new(1, 4, &[2, 3, 4][..]));
+        assert_eq!(win.next().unwrap(), Window::new(2, 5, &[3, 4, 5][..]));
+        assert_eq!(win.next().unwrap(), Window::new(3, 6, &[4, 5, 6][..]));
+        assert_eq!(win.next().unwrap(), Window::new(4, 7, &[5, 6, 7][..]));
         assert!(win.next().is_none());
     }
 
@@ -255,15 +277,15 @@ mod test {
     fn handles_incomplete_windows() {
         let elems = &[1, 2, 3, 4];
         let mut win = Windows::new(elems, 3, 2);
-        assert_eq!(win.next().unwrap(), Window::new(0, 3, &[1, 2, 3]));
-        assert_eq!(win.next().unwrap(), Window::new(2, 4, &[3, 4]));
+        assert_eq!(win.next().unwrap(), Window::new(0, 3, &[1, 2, 3][..]));
+        assert_eq!(win.next().unwrap(), Window::new(2, 4, &[3, 4][..]));
         assert!(win.next().is_none());
 
         let elems = &[1, 2, 3, 4, 5, 6];
         let mut win = Windows::new(elems, 3, 2);
-        assert_eq!(win.next().unwrap(), Window::new(0, 3, &[1, 2, 3]));
-        assert_eq!(win.next().unwrap(), Window::new(2, 5, &[3, 4, 5]));
-        assert_eq!(win.next().unwrap(), Window::new(4, 6, &[5, 6]));
+        assert_eq!(win.next().unwrap(), Window::new(0, 3, &[1, 2, 3][..]));
+        assert_eq!(win.next().unwrap(), Window::new(2, 5, &[3, 4, 5][..]));
+        assert_eq!(win.next().unwrap(), Window::new(4, 6, &[5, 6][..]));
         assert!(win.next().is_none());
     }
 
@@ -271,7 +293,7 @@ mod test {
     fn handles_single_step() {
         let elems = &[1, 2, 3, 4];
         let mut win = Windows::new(elems, 4, 2);
-        assert_eq!(win.next().unwrap(), Window::new(0, 4, &[1, 2, 3, 4]));
+        assert_eq!(win.next().unwrap(), Window::new(0, 4, &[1, 2, 3, 4][..]));
         assert!(win.next().is_none());
 
         let elems: &[u8] = b"This is";
@@ -318,28 +340,41 @@ mod test {
     fn gets_last() {
         let elems = &[1, 2, 3, 4];
         let win = Windows::new(elems, 3, 2);
-        assert_eq!(win.last().unwrap(), Window::new(2, 4, &[3, 4]));
+        assert_eq!(win.last().unwrap(), Window::new(2, 4, &[3, 4][..]));
 
         let elems = &[1, 2, 3, 4, 5, 6];
         let win = Windows::new(elems, 3, 2);
-        assert_eq!(win.last().unwrap(), Window::new(4, 6, &[5, 6]));
+        assert_eq!(win.last().unwrap(), Window::new(4, 6, &[5, 6][..]));
     }
 
     #[test]
     fn gets_nth() {
         let elems = &[1, 2, 3, 4, 5, 6, 7];
         let mut win = Windows::new(elems, 3, 1);
-        assert_eq!(win.nth(1).unwrap(), Window::new(1, 4, &[2, 3, 4]));
-        assert_eq!(win.next().unwrap(), Window::new(2, 5, &[3, 4, 5]));
+        assert_eq!(win.nth(1).unwrap(), Window::new(1, 4, &[2, 3, 4][..]));
+        assert_eq!(win.next().unwrap(), Window::new(2, 5, &[3, 4, 5][..]));
 
         let mut win = Windows::new(elems, 3, 1);
-        assert_eq!(win.nth(3).unwrap(), Window::new(3, 6, &[4, 5, 6]));
-        assert_eq!(win.next().unwrap(), Window::new(4, 7, &[5, 6, 7]));
+        assert_eq!(win.nth(3).unwrap(), Window::new(3, 6, &[4, 5, 6][..]));
+        assert_eq!(win.next().unwrap(), Window::new(4, 7, &[5, 6, 7][..]));
 
         println!("last");
         let mut win = Windows::new(elems, 3, 2);
-        assert_eq!(win.nth(1).unwrap(), Window::new(2, 5, &[3, 4, 5]));
-        assert_eq!(win.next().unwrap(), Window::new(4, 7, &[5, 6, 7]));
+        assert_eq!(win.nth(1).unwrap(), Window::new(2, 5, &[3, 4, 5][..]));
+        assert_eq!(win.next().unwrap(), Window::new(4, 7, &[5, 6, 7][..]));
         assert!(win.next().is_none());
+    }
+
+    #[test]
+    fn maps_ok() {
+        let elems: &[u32] = &[1, 1, 1, 2, 2, 2, 3, 3];
+        let v: Vec<Window<u32>> = Windows::new(elems, 3, 1)
+            .map(|w| {
+                w.map(|v| v.iter().cloned().fold(0u32, u32::max))
+            })
+            .collect();
+
+        assert_eq!(v[0], Window::new(0, 3, 1));
+        assert_eq!(v[5], Window::new(5, 8, 3));
     }
 }
